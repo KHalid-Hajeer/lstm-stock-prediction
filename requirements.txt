@@ -1,0 +1,15 @@
+# Core ML & data science
+tensorflow==2.16.2
+scikit-learn==1.7.1
+pandas==2.3.1
+numpy==1.26.4
+matplotlib==3.10.3
+seaborn==0.13.2
+scipy==1.16.1
+
+# Technical indicators & finance
+mplfinance==0.12.10b0
+alpaca-trade-api==3.2.0
+
+# Optional (if you use entropy, FFT, etc.)
+PyYAML==6.0.1
