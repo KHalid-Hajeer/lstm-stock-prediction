@@ -14,3 +14,6 @@ alpaca-py==0.42.0
 
 # Optional (if you use entropy, FFT, etc.)
 PyYAML==6.0.1
+
+# Env
+python-dotenv==1.1.1
