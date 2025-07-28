@@ -10,6 +10,7 @@ scipy==1.16.1
 # Technical indicators & finance
 mplfinance==0.12.10b0
 alpaca-trade-api==3.2.0
+alpaca-py==0.42.0
 
 # Optional (if you use entropy, FFT, etc.)
 PyYAML==6.0.1
