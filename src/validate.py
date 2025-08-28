@@ -180,11 +180,11 @@ def run_all_validations(
     """Run a standard set of validations.
 
     Args:
-        raw (pd.DataFrame): Raw OHLCV  (and optional vwap and trade_count) data.
+        raw (pd.DataFrame): Raw OHLCV (and optional vwap and trade_count) data.
         X (pd.DataFrame): Feature matrix (post-lag).
         y (pd.Series): Target series aligned to X.
         required_raw_cols (Sequence[str]): Required columns in `raw`. Defaults to ("open", "high", "low", "close").
-        expected_centrak_lag_days (int): Expected central lag applied to X in days. Defaults to 1.
+        expected_central_lag_days (int): Expected central lag applied to X in days. Defaults to 1.
     
     Raises:
         AssertionError: If any validation fails.
