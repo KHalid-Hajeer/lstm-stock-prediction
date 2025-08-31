@@ -120,8 +120,8 @@ def train_ridge_with_val(
         - Scaling is fit only on the data used to train the model (no leakage).
         - If 'refit_on_train_val=True', we rebuild the pipeline with the chosen alpha and fit it on the concatenated train+val slice to use later on the test set.
     """
-    X_train, y_train = align_X_y(X_train, y_train, dropna_rows=True)
-    X_val, y_val = align_X_y(X_val, y_val, dropna_rows=True)
+    X_train, y_train = align_X_y(X_train, y_train, dropna=True)
+    X_val, y_val = align_X_y(X_val, y_val, dropna=True)
 
     alpha_grid = [float(alpha) for alpha in alphas if np.isfinite(alpha) and alpha >0]
     if not alpha_grid:
@@ -224,8 +224,8 @@ def train_xgb_with_val(
         raise ValueError(f"`early_stopping_rounds` must be an integer >= 1, got {early_stopping_rounds!r}.")
 
     # Align and validate data
-    X_train, y_train = align_X_y(X_train, y_train, dropna_rows=True)
-    X_val, y_val = align_X_y(X_val, y_val, dropna_rows=True)
+    X_train, y_train = align_X_y(X_train, y_train, dropna=True)
+    X_val, y_val = align_X_y(X_val, y_val, dropna=True)
 
     # Require identical feature columns and order (avoid silent train/val mismatch)
     if not X_val.columns.equals(X_train.columns):
