@@ -1,30 +1,14 @@
 # src/metrics.py
 from __future__ import annotations
 
-from typing import Optional, Tuple, Iterable
+from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from utils import clean_series
+
 
 # Internal helpers
-
-def clean_numeric_series(series: pd.Series) -> pd.Series:
-    """Coerce to float64 and drop NaN/±inf.
-
-    Args:
-        series: Input series.
-
-    Returns:
-        pd.Series: Float64 series with only finite values (original index preserved).
-
-    Notes:
-        We deliberately do NOT raise when the result is empty.
-        Returning an empty series allows callers to decide whether to error or skip.
-    """
-    s = pd.Series(series).astype("float64")
-    finite_mask = np.isfinite(s.values)  # boolean "mask" for indexing
-    return s[finite_mask]
-
 
 def infer_periods_per_year(index: pd.Index, default: int = 252) -> int:
     """Infer trading periods per year from a Date/Datetime index.
@@ -90,7 +74,7 @@ def annualized_return(
     Notes:
         For log returns, we exponentiate the cumulative sum; for simple returns, we compound (1+r). If the input is empty, returns NaN.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     ppy = periods_per_year or infer_periods_per_year(r.index)
@@ -117,7 +101,7 @@ def annualized_volatility(
     Returns:
         float: Annualised volatility.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     ppy = periods_per_year or infer_periods_per_year(r.index)
@@ -139,7 +123,7 @@ def downside_std(
     Returns:
         float: Annualised downside deviation.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     ppy = periods_per_year or infer_periods_per_year(r.index)
@@ -163,7 +147,7 @@ def sharpe_ratio(
     Returns:
         float: Sharpe ratio (unitless). NaN if variance is zero or input empty.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     ppy = periods_per_year or infer_periods_per_year(r.index)
@@ -191,7 +175,7 @@ def sortino_ratio(
     Returns:
         float: Sortino ratio (unitless). NaN if downside deviation is zero or input empty.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     ppy = periods_per_year or infer_periods_per_year(r.index)
@@ -227,7 +211,7 @@ def wealth_curve(
     """
     if starting_wealth <= 0:
         raise ValueError("starting_wealth must be positive.")
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return pd.Series(dtype="float64")
     growth = np.exp(r.cumsum()) if returns_are_log else (1.0 + r).cumprod()
@@ -245,7 +229,7 @@ def drawdown_series(wealth: pd.Series) -> pd.Series:
     Returns:
         pd.Series: Drawdown series in [-1, 0].
     """
-    w = clean_numeric_series(wealth)
+    w = clean_series(wealth)
     if w.empty:
         return pd.Series(dtype="float64")
     running_peak = w.cummax()
@@ -284,7 +268,7 @@ def hit_rate(returns: pd.Series) -> float:
     Returns:
         float: Hit rate in [0, 1] or NaN if input empty.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return np.nan
     return float((r > 0).mean())
@@ -303,7 +287,7 @@ def turnover_stats(
     Returns:
         Tuple[float, float]: (avg_daily_turnover, annualized_turnover), NaNs if empty.
     """
-    t = clean_numeric_series(turnover)
+    t = clean_series(turnover)
     if t.empty:
         return (np.nan, np.nan)
     ppy = periods_per_year or infer_periods_per_year(t.index)
@@ -419,7 +403,7 @@ def long_short_attribution(
     Returns:
         pd.Series: Aggregates for long/short contributions and counts.
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     w = pd.Series(weight).astype("float64").reindex(r.index)
     sign = np.sign(w.where(w.abs() >= min_abs_weight, 0.0))
 
@@ -454,7 +438,7 @@ def yearly_summary(returns: pd.Series) -> pd.DataFrame:
     Returns:
         pd.DataFrame: One row per year with metrics (index = Year).
     """
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return pd.DataFrame(columns=["CAGR", "Sharpe", "MaxDD"])
     rows = []
@@ -497,7 +481,7 @@ def regime_by_realized_vol(
     """
     ...
 
-    r = clean_numeric_series(returns)
+    r = clean_series(returns)
     if r.empty:
         return pd.DataFrame(columns=["CAGR", "Sharpe", "MaxDD", "Count"])
     realized_vol = r.shift(1).rolling(window, min_periods=window).std()  # no lookahead in the estimator
@@ -563,8 +547,8 @@ def summarize_backtest(
     if turnover_column not in backtest_frame.columns:
         raise ValueError(f"'{turnover_column}' not found in backtest_frame.")
 
-    r = clean_numeric_series(backtest_frame[return_column])
-    t = clean_numeric_series(backtest_frame[turnover_column])
+    r = clean_series(backtest_frame[return_column])
+    t = clean_series(backtest_frame[turnover_column])
     if r.empty:
         # Return a labeled, but empty, series to avoid downstream KeyErrors.
         return pd.Series(
@@ -604,7 +588,7 @@ def summarize_backtest(
         "FinalWealth": float(w.iloc[-1]),
     }
     if "transaction_cost" in backtest_frame.columns:
-        total_cost = float(clean_numeric_series(backtest_frame["transaction_cost"]).sum())
+        total_cost = float(clean_series(backtest_frame["transaction_cost"]).sum())
         out["TotalCost"] = total_cost
 
     return pd.Series(out)
