@@ -8,63 +8,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
-
 from xgboost import XGBRegressor
 
+from utils import clean_series, align_X_y, as_series
 
-# Utilities
 
-def _clean_series(series: pd.Series) -> pd.Series:
-    """Return float64 series with only finite values (index preserved).
-    
-    Args:
-        series (pd.Series): Input series.
-
-    Returns:
-        pd.Series: Float64 series with only finite values (original index preserved).
-
-    Notes:
-        - We deliberately do NOT raise when the result is empty.
-        Returning an empty series allows callers to decide whether to error or skip.
-        - Keeps original index for the retained entries only.
-    """
-    series_float64 = pd.Series(series).astype("float64")
-    mask = np.isfinite(series_float64.values)
-    return series_float64[mask]
-
-def _align_X_y(X: pd.DataFrame, y: pd.Series, dropna_rows: bool = True) -> Tuple[pd.DataFrame, pd.Series]:
-    """Align features (X) and target (y) by index; optionally drop rows with any NaNs.
-    
-    Args:
-        X: Feature matrix.
-        y: Target series.
-        dropna_rows: Whether to drop rows with any NaNs.
-
-    Returns:
-        Tuple[pd.DataFrame, pd.Series]: Aligned feature matrix (X) and target vector (y) with identical index.
-
-    Raises:
-        ValueError: If there is no overlapping index or the result is empty after cleaning.
-    """
-    X = pd.DataFrame(X).copy()
-    y = pd.Series(y).copy()
-
-    idx = X.index.intersection(y.index)
-    if idx.empty:
-        raise ValueError("No overlapping index between X and y.")
-    
-    X2, y2 = X.loc[idx], y.loc[idx]
-    if dropna_rows:
-        X_f64 = X2.astype("float64")
-        y_f64 = y2.astype("float64")
-        mask = (
-            np.isfinite(X_f64.to_numpy()).all(axis=1)
-            & np.isfinite(y_f64.to_numpy())
-        )
-        X2, y2 = X2.loc[mask], y2.loc[mask]
-        if X2.empty or y2.empty:
-            raise ValueError("After alignemnt, X or y are empty. Check NaN/inf values.")
-    return X2, y2
+# Helpers
 
 def pearson_corr(y_true: pd.Series, y_pred: pd.Series, raise_on_degenerate: bool = False) -> float:
     """Safe Pearson correlation (returns NaN or optional error if degenerate).
@@ -85,8 +34,8 @@ def pearson_corr(y_true: pd.Series, y_pred: pd.Series, raise_on_degenerate: bool
         ValueError: If raise_on_degenerate is True and degenerate.
     
     """
-    clean_true = _clean_series(pd.Series(y_true))
-    clean_pred = _clean_series(pd.Series(y_pred))
+    clean_true = clean_series(pd.Series(y_true))
+    clean_pred = clean_series(pd.Series(y_pred))
     clean_true, clean_pred = clean_true.align(clean_pred, join = "inner")
 
     # Degeneracy checks
@@ -119,25 +68,6 @@ def _ridge_pipeline(alpha: float) -> Pipeline:
         ("ridge", Ridge(alpha=float(alpha), fit_intercept=True))
     ])
 
-def _as_series(values: np.ndarray | Iterable[float], index: pd.Index, name: str) -> pd.Series:
-    """Convert array-like predictions to a Series with the given index/name.
-    
-    Args:
-        values (np.ndarray | Iterable[float]): Array-like numeric predictions.
-        index (pd.Index): Index for the Series.
-        name (str): Series name.
-    
-    
-    Returns:
-        pd.Series: Series with the given index/name.
-    
-    Raises:
-        ValueError: If lengths do not match.
-    """
-    array = np.asarray(values, dtype="float64")
-    if len(array) != len(index):
-        raise ValueError(f"Length mismatch: values={len(array)} vs index={len(index)}")
-    return pd.Series(array, index=index, name=name)
 
 
 # Persistence baseline
@@ -190,8 +120,8 @@ def train_ridge_with_val(
         - Scaling is fit only on the data used to train the model (no leakage).
         - If 'refit_on_train_val=True', we rebuild the pipeline with the chosen alpha and fit it on the concatenated train+val slice to use later on the test set.
     """
-    X_train, y_train = _align_X_y(X_train, y_train, dropna_rows=True)
-    X_val, y_val = _align_X_y(X_val, y_val, dropna_rows=True)
+    X_train, y_train = align_X_y(X_train, y_train, dropna_rows=True)
+    X_val, y_val = align_X_y(X_val, y_val, dropna_rows=True)
 
     alpha_grid = [float(alpha) for alpha in alphas if np.isfinite(alpha) and alpha >0]
     if not alpha_grid:
@@ -203,7 +133,7 @@ def train_ridge_with_val(
 
     for alpha in alpha_grid:
         pipeline = _ridge_pipeline(alpha=alpha).fit(X_train, y_train)
-        val_pred = _as_series(pipeline.predict(X_val), index=X_val.index, name="pred_ridge_val")
+        val_pred = as_series(pipeline.predict(X_val), index=X_val.index, name="pred_ridge_val")
         corr = pearson_corr(y_val, val_pred)
 
         if np.isnan(corr):
@@ -294,8 +224,8 @@ def train_xgb_with_val(
         raise ValueError(f"`early_stopping_rounds` must be an integer >= 1, got {early_stopping_rounds!r}.")
 
     # Align and validate data
-    X_train, y_train = _align_X_y(X_train, y_train, dropna_rows=True)
-    X_val, y_val = _align_X_y(X_val, y_val, dropna_rows=True)
+    X_train, y_train = align_X_y(X_train, y_train, dropna_rows=True)
+    X_val, y_val = align_X_y(X_val, y_val, dropna_rows=True)
 
     # Require identical feature columns and order (avoid silent train/val mismatch)
     if not X_val.columns.equals(X_train.columns):
@@ -335,7 +265,7 @@ def train_xgb_with_val(
         raise RuntimeError("XGBoost reported an invalid 'best_iteration'. This should not happen; check your data/parameters.")
 
     # Use the early-stopped iteration range for validation predictions
-    val_pred = _as_series(
+    val_pred = as_series(
         base_model.predict(X_val, iteration_range=(0, best_n)),
         index=X_val.index,
         name="pred_xgb_val"
@@ -392,7 +322,7 @@ def predict_series(model, X: pd.DataFrame, name: str = "prediction") -> pd.Serie
     if not hasattr(model, "predict"):
         raise AttributeError(f"Model {model!r} has no 'predict' method.")
     yhat = model.predict(X)
-    return _as_series(yhat, index=X.index, name=name)
+    return as_series(yhat, index=X.index, name=name)
 
 
 __all__ = [
