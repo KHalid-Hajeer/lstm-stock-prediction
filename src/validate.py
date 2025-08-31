@@ -3,6 +3,8 @@ from typing import Iterable, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from utils import align_X_y
+
 # Basic schema & index checks
 
 def assert_required_columns(df: pd.DataFrame, columns: Iterable[str], name: str = "dataframe") -> None:
@@ -66,30 +68,6 @@ def assert_no_nan_or_inf(df: pd.DataFrame | pd.Series, name: str = "dataframe") 
         assert bad_total == 0, f"{name} contains NaN or ±inf values."
 
 # Alignment helpers
-
-def align_X_y(X: pd.DataFrame, y: pd.Series, dropna: bool = True) -> Tuple[pd.DataFrame, pd.Series]:
-    """Align feature matrix X and target y on the same index.
-
-    Args:
-        X (pd.DataFrame): Feature matrix.
-        y (pd.Series): Target series indexed by date.
-        dropna (bool): Whether to drop rows with missing values. Defaults to True.
-
-    Returns:
-        Tuple[pd.DataFrame, pd.Series]: Aligned feature matrix (X) and target vector (y) with identical index.
-    
-    Raises:
-        AssertionError: If the intersection of indices is empty.
-    """
-    intersection = X.index.intersection(y.index)
-    assert len(intersection) > 0, "align_X_y: empty intersection between X and y indices."
-    X2 = X.loc[intersection].copy()
-    y2 = y.loc[intersection].copy()
-    if dropna:
-        mask = np.isfinite(X2.astype("float64")).all(axis=1) & np.isfinite(y2.astype("float64"))
-        X2, y2 = X2.loc[mask], y2.loc[mask]
-    return X2, y2
-
 
 def assert_same_index(X: pd.DataFrame, y: pd.Series, name_x: str = "X", name_y: str = "y") -> None:
     """Assert that X and y share exactly the same index (order and values).
@@ -198,7 +176,7 @@ def run_all_validations(
     assert_no_nan_or_inf(X, name="X")
 
     # Align & check indexes
-    X2, y2 = align_X_y(X, y, drop_na=True)
+    X2, y2 = align_X_y(X, y, dropna=True)
     assert_same_index(X2, y2)
 
     # Anti-leakage (structural + heuristic)
