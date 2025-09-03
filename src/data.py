@@ -2,15 +2,18 @@
 from __future__ import annotations
 import os
 import datetime as dt
+from typing import Optional, Union
+
 import pandas as pd
 from dateutil import relativedelta
-from typing import Optional
 
 # Alpaca Libraries
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.timeframe import DataFeed
 
+# Internal helpers
 def _client(api_key: Optional[str] = None, secret_key: Optional[str] = None) -> StockHistoricalDataClient:
     """Create an Alpaca historical data client.
 
@@ -28,8 +31,30 @@ def _client(api_key: Optional[str] = None, secret_key: Optional[str] = None) -> 
     sec = secret_key or os.getenv('ALPACA_SECRET_KEY')
     if not api or not sec:
         raise ValueError("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set in environment variables.")
-    
     return StockHistoricalDataClient(api, sec)
+
+def _resolve_feed(feed: Optional[Union[str, object]]) -> Optional[object]:
+    """Return a feed compatible with alpaca-py (IEX by default for free plan)
+    
+    Args:
+        feed (Optional[Union[str, object]]): Feed name or feed object.
+
+    Returns:
+        Optional[object]: Feed object.
+    """
+    if feed is None:
+        feed = "iex"
+    if isinstance(feed, str):
+        feed_str = feed.strip().lower()
+        if DataFeed is not None:
+            if feed_str in ("iex", "free"):
+                return DataFeed.IEX
+            if feed_str in ("sip", "premium"):
+                return DataFeed.SIP
+        # If enumerations unavailable, pass the raw string
+        return "iex" if feed_str in ("iex", "free") else "sip"
+    # If caller passed an enumeration already:
+    return feed
 
 def _flatten_bars_df(bars_df: pd.DataFrame) -> pd.DataFrame:
     """Normalise Alpaca bars into a clean OHLCV(+optional VWAP & trade_count) DataFrame.
@@ -69,8 +94,9 @@ def _flatten_bars_df(bars_df: pd.DataFrame) -> pd.DataFrame:
 def get_stock_data(
     symbol: str = 'SPY',
     years: int = 10,
-    path: str = '/data/raw/SPY.parquett',
-    force_refresh: bool = False
+    path: str = '/data/raw/SPY.parquet',
+    force_refresh: bool = False,
+    feed: str = 'iex' # Default to IEX (free tier)
     ) -> pd.DataFrame:
     """ Fetch daily OHLCV (+ vwap & trade_count) data for a given stock symbol from Alpaca.
     
@@ -111,10 +137,27 @@ def get_stock_data(
         timeframe=TimeFrame.Day,
         start=start,
         end=end,
+        feed=_resolve_feed(feed),
+        limit=10000
     )
 
-    # Fetch the stock data from Alpaca
-    bars = client.get_stock_bars(request_params)
+    # Fetch the stock data from Alpaca with auto fallback
+    try:
+        bars = client.get_stock_bars(request_params)
+    except Exception as e:
+        if "subscription" in str(e).lower() and "sip" in str(e).lower():
+            req = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=TimeFrame.Day,
+                start=start,
+                end=end,
+                feed=_resolve_feed("iex"),
+                limit=10000,
+            )
+            bars = client.get_stock_bars(req)
+        else:
+            raise
+
 
     # Clean the DataFrame
     df = _flatten_bars_df(bars.df)
