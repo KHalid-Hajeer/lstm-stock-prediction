@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import Iterable, Sequence, Tuple
+from typing import Iterable, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from utils import align_X_y
+from src.utils import align_X_y
 
 # Basic schema & index checks
 
@@ -49,11 +49,11 @@ def assert_no_duplicate_columns(df: pd.DataFrame, name: str = "dataframe") -> No
     duplicates = pd.Series(df.columns).duplicated(keep=False)
     assert not duplicates.any(), f"{name} contains duplicate columns: {list(pd.Series(df.columns)[duplicates].unique())}"
 
-def assert_no_nan_or_inf(df: pd.DataFrame | pd.Series, name: str = "dataframe") -> None:
+def assert_no_nan_or_inf(df: Union[pd.DataFrame, pd.Series], name: str = "dataframe") -> None:
     """Assert there are no Nans or ±inf values.
 
     Args:
-        df (pd.DataFrame | pd.Series): DataFrame or Series to check.
+        df (Union[pd.DataFrame, pd.Series]: DataFrame or Series to check.
         name (str): Name used in error messages. Defaults to "dataframe".
 
     Raises:

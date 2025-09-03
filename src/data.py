@@ -35,7 +35,7 @@ def _flatten_bars_df(bars_df: pd.DataFrame) -> pd.DataFrame:
     """Normalise Alpaca bars into a clean OHLCV(+optional VWAP & trade_count) DataFrame.
     
     Alpaca may return a MultiIndex (symbol, timestamp). This flattents it, sets a UTC DatetimeIndex, 
-    standardises column names, enforces numeric typs, removes duplicates, and drops rows with missing values.
+    standardises column names, enforces numeric types, removes duplicates, and drops rows with missing values.
 
     Args:
         bars_df (pd.DataFrame): Raw bars DataFrame from the Alpaca SDK.
@@ -69,7 +69,7 @@ def _flatten_bars_df(bars_df: pd.DataFrame) -> pd.DataFrame:
 def get_stock_data(
     symbol: str = 'SPY',
     years: int = 10,
-    path: str = '@/data/raw/SPY.parquet',
+    path: str = '/data/raw/SPY.parquett',
     force_refresh: bool = False
     ) -> pd.DataFrame:
     """ Fetch daily OHLCV (+ vwap & trade_count) data for a given stock symbol from Alpaca.

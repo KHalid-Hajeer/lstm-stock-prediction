@@ -1,4 +1,4 @@
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Union
 import pandas as pd
 import numpy as np
 
@@ -56,11 +56,11 @@ def align_X_y(X: pd.DataFrame, y: pd.Series, dropna: bool = True) -> Tuple[pd.Da
             raise ValueError("After alignemnt, X or y are empty. Check NaN/inf values.")
     return X2, y2
 
-def as_series(values: np.ndarray | Iterable[float], index: pd.Index, name: str) -> pd.Series:
+def as_series(values: Union[np.ndarray, Iterable[float]], index: pd.Index, name: str) -> pd.Series:
     """Convert array-like predictions to a Series with the given index/name.
     
     Args:
-        values (np.ndarray | Iterable[float]): Array-like numeric predictions.
+        values (Union[np.ndarray, Iterable[float]]): Array-like numeric predictions.
         index (pd.Index): Index for the Series.
         name (str): Series name.
     

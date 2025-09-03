@@ -10,7 +10,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 from xgboost import XGBRegressor
 
-from utils import clean_series, align_X_y, as_series
+from src.utils import clean_series, align_X_y, as_series
 
 
 # Helpers
