@@ -11,7 +11,6 @@ from dateutil import relativedelta
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
-from alpaca.data.timeframe import DataFeed
 
 # Internal helpers
 def _client(api_key: Optional[str] = None, secret_key: Optional[str] = None) -> StockHistoricalDataClient:
@@ -46,11 +45,6 @@ def _resolve_feed(feed: Optional[Union[str, object]]) -> Optional[object]:
         feed = "iex"
     if isinstance(feed, str):
         feed_str = feed.strip().lower()
-        if DataFeed is not None:
-            if feed_str in ("iex", "free"):
-                return DataFeed.IEX
-            if feed_str in ("sip", "premium"):
-                return DataFeed.SIP
         # If enumerations unavailable, pass the raw string
         return "iex" if feed_str in ("iex", "free") else "sip"
     # If caller passed an enumeration already:
