@@ -66,9 +66,21 @@ def _flatten_bars_df(bars_df: pd.DataFrame) -> pd.DataFrame:
     Raises:
         ValueError: If the DataFrame does not contain the expected columns.
     """
-    df = bars_df.reset_index() if isinstance(bars_df.index, pd.MultiIndex) else bars_df.copy()
+    # Always bring the time index out as a column and call it 'timestamp'
+    if isinstance(bars_df.index, pd.MultiIndex):
+        df = bars_df.reset_index()
+        # If Alpaca already names the time level 'timestamp', great; otherwise use the last index level name
+        time_col = 'timestamp' if 'timestamp' in df.columns else bars_df.index.names[-1]
+    else:
+        # Handles DatetimeIndex and others uniformly
+        df = bars_df.reset_index()
+        # If the index had no name, reset_index creates a column called 'index'
+        time_col = bars_df.index.name or 'index'
+
+    df = df.rename(columns={time_col: 'timestamp'})
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True, errors='coerce')
     df = df.set_index('timestamp').sort_index()
+
     
     # Standardise column names
     df.columns = [col.lower() for col in df.columns]
@@ -170,23 +182,36 @@ def align_calendar(df: pd.DataFrame) -> pd.DataFrame:
     No forward-filling is performed.
         
     Args:
-        df (pd.DataFrame): Raw or cached DataFrame with a 'timestamp' column.
+        df (pd.DataFrame): Raw or cached DataFrame with a 'timestamp' column or index.
         
     Returns:
         pd.DataFrame: Clean OHLCV (+ VWAP & trade_count) DataFrame with a unique, sorted UTC index.
     
     Raises:
-        ValueError: If 'timestamp' column is missing or not in datetime format.
+        ValueError: If 'timestamp' column or index is missing or not in datetime format.
     """
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'timestamp' not in df.columns:
-            raise ValueError("DataFrame must contain a 'timestamp' column.")
-    
-    # Reindex the DataFrame to align with the trading calendar
-    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True, errors='coerce')
-    df.set_index('timestamp', inplace=True).sort_index()
-    df = df[~df.index.duplicated(keep='first')]
-    keep = [c for c in ['open', 'high', 'low', 'close', 'volume', 'vwap', 'trade_count'] if c in df.columns]
-    df = df[keep].apply(pd.to_numeric, errors='coerce').dropna()
-    
+    df = df.copy()
+
+    # Establish the time index
+    if 'timestamp' in df.columns:
+        idx = pd.to_datetime(df['timestamp'], utc=True, errors='coerce')
+    elif isinstance(df.index, pd.DatetimeIndex):
+        idx = df.index
+        idx = idx.tz_localize('UTC') if idx.tz is None else idx.tz_convert('UTC')
+    else:
+        # Try common alternatives
+        for cand in ('time', 'date', 'datetime'):
+            if cand in df.columns:
+                idx = pd.to_datetime(df[cand], utc=True, errors='coerce')
+                break
+        else:
+            raise KeyError("No 'timestamp' column or DatetimeIndex found.")
+
+    df.index = idx
+    df = df[~df.index.isna()]
+    df = df[~df.index.duplicated(keep='first')].sort_index()
+
+    keep = [c for c in ('open','high','low','close','volume','vwap','trade_count') if c in df.columns]
+    df = df[keep].apply(pd.to_numeric, errors='coerce').dropna(how='any')
+
     return df
