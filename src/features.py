@@ -127,16 +127,16 @@ def compute_relative_strength_index(close_prices: pd.Series, lookback: int = 14)
     Returns:
         pd.Series: Relative Strength Index series aligned to the input index (first values NaN), values between 0 and 100.
     """
-    close_prices = pd.Series(close_prices, "close")
+    close_prices = pd.Series(close_prices, dtype="float64").rename("close_prices")
     delta = close_prices.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
     alpha = 1.0 / lookback
-    avg_gain = gain.ewn(alpha=alpha, adjust=False, min_periods=lookback)
-    avg_loss = loss.ewn(alpha=alpha, adjust=False, min_periods=lookback)
+    avg_gain = gain.ewm(alpha=alpha, adjust=False, min_periods=lookback).mean()
+    avg_loss = loss.ewm(alpha=alpha, adjust=False, min_periods=lookback).mean()
 
-    rs = avg_gain / avg_loss.replace(0, np.nan)  # Avoid division by zero
+    rs = avg_gain / avg_loss.replace(0.0, np.nan)  # Avoid division by zero
     rsi = 100.0 - (100.0 / (1 + rs))
     rsi = rsi.rename(f"rsi_{lookback}")
     return rsi
@@ -179,11 +179,11 @@ def compute_bollinger_bands(close_prices: pd.Series, lookback: int = 20, width: 
     Returns:
         Tuple[pd.Series, pd.Series, pd.Series]: (bb_upper_band, bb_lower_band).
     """
-    close_prices = pd.Series(close_prices, "close")
+    close_prices = pd.Series(close_prices, dtype="float64").rename("close_prices")
     middle_band = compute_simple_moving_average(close_prices, lookback).rename(f"bb_mid_{lookback}")
     std = close_prices.rolling(lookback, min_periods=lookback).std()
-    upper_band = ((middle_band + width) * std).rename(f"bb_upper_{lookback}")
-    lower_band = ((middle_band - width) * std).rename(f"bb_lower_{lookback}")
+    upper_band = (middle_band + width * std).rename(f"bb_upper_{lookback}")
+    lower_band = (middle_band - width * std).rename(f"bb_lower_{lookback}")
     return middle_band, upper_band, lower_band
 
 # Combine all technical features
@@ -208,13 +208,14 @@ def make_technical_features(ohlc: pd.DataFrame) -> pd.DataFrame:
     features["rsi_14"] = compute_relative_strength_index(ohlc["close"], 14)
     
     # MACD
-    macd, macd_signal = compute_macd_indicator(ohlc["close"], 12, 26, 9)
-    features["macd"] = macd
-    features["macd_signal"] = macd_signal
+    macd_df = compute_macd_indicator(ohlc["close"], 12, 26, 9)
+    features["macd"] = macd_df["macd"]
+    features["macd_signal"] = macd_df["signal"]
+    features["macd_histogram"] = macd_df["histogram"]
     
     # Bollinger Bands
     bb_middle, bb_upper, bb_lower = compute_bollinger_bands(ohlc["close"], 20, 2.0)
-    features["bb_middle_20"] - bb_middle
+    features["bb_middle_20"] = bb_middle
     features["bb_upper_20"] = bb_upper
     features["bb_lower_20"] = bb_lower
 
@@ -327,16 +328,16 @@ def compute_shannon_entropy_window(
     """
     window_values = pd.Series(window_values).dropna().to_numpy()
     if window_values.size < min_count:
-        return np.nan
+        return float("nan")
     counts, _ = np.histogram(window_values, bins=bins, density=False)
     total = counts.sum()
     if total == 0:
-        return np.nan
+        return float("nan")
     probabilities = counts[counts > 0].astype(float) / float(total)
     entropy = -(probabilities * np.log(probabilities)).sum()
     if base is not None:
         entropy /= np.log(base)
-        return float(entropy)
+    return float(entropy)
 
 def compute_hurst_exponent_window(
         window_values: pd.Series, 
@@ -355,17 +356,17 @@ def compute_hurst_exponent_window(
     """
     window_values = pd.Series(window_values).dropna().to_numpy()
     if window_values.size < min_len:
-        return np.nan
+        return float("nan")
     lags = np.arange(2, max_lag + 1, dtype=int)
     lags = lags[lags < window_values.size]
     if lags.size == 0:
-        return np.nan
+        return float("nan")
     # std of lagged differences
     tau = np.array([np.std(window_values[lag:] - window_values[:-lag], ddof=0) for lag in lags])
     # guard against non-positive/NaN values
     mask = np.isfinite(tau) & (tau > 0)
     if mask.sum() < 3:
-        return np.nan
+        return float("nan")
     slope = np.polyfit(np.log(lags[mask]), np.log(tau[mask]), 1)[0]
     return slope
 
