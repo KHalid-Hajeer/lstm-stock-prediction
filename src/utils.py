@@ -44,12 +44,14 @@ def align_X_y(X: pd.DataFrame, y: pd.Series, dropna: bool = True) -> Tuple[pd.Da
     X2, y2 = X.loc[idx], y.loc[idx]
 
     if dropna:
-        X_f64 = X2.astype("float64")
-        y_f64 = y2.astype("float64")
-        mask = (
-            np.isfinite(X_f64.to_numpy()).all(axis=1)
-            & np.isfinite(y_f64.to_numpy())
-        )
+        X_num = X2.apply(pd.to_numeric, errors="coerce")
+        y_num = pd.to_numeric(y2, errors="coerce")
+
+        # Trate ±inf as missing
+        X2 = X_num.replace([np.inf, -np.inf], np.nan)
+        y2 = y_num.replace([np.inf, -np.inf], np.nan)
+
+        mask = X_num.notna().all(axis=1) & y_num.notna()
         X2, y2 = X2.loc[mask], y2.loc[mask]
 
         if X2.empty or y2.empty:
