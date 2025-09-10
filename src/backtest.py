@@ -99,10 +99,26 @@ def single_asset_backtest(
     # Align inputs and sanity checks
     scores_series = pd.Series(scores).astype("float64")
     next_day_return = pd.Series(y_raw_next).astype("float64")
+
+    # Ensure both are datetime-indexed, tz-naive, sorted, deduplicated
+    def _to_dt(s: pd.Series, who: str) -> pd.Series:
+        if not isinstance(s.index, pd.DatetimeIndex):
+            try:
+                s.index = pd.to_datetime(s.index, errors="raise")
+            except Exception as e:
+                raise TypeError(f"'{who}' index must be datetime-like or coercible.") from e
+        if s.index.tz is not None:
+            s.index = s.index.tz_localize(None)
+        s = s[~s.index.duplicated(keep="first")].sort_index()
+        return s
+    
+    scores_series = _to_dt(scores_series, "scores")
+    next_day_return = _to_dt(next_day_return, "y_raw_next")
+
     common_index = scores_series.index.intersection(next_day_return.index)
     if len(common_index) == 0:
-        raise ValueError("No overla[[ing index between 'scores' and 'y_raw_next'.")
-    scorse_series = scores_series.loc[common_index]
+        raise ValueError("No overlapping index between 'scores' and 'y_raw_next'.")
+    scores_series = scores_series.loc[common_index]
     next_day_return = next_day_return.loc[common_index]
 
     # 1) Time-series z-score of model scores (no lookahead)
