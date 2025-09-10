@@ -176,7 +176,8 @@ def train_xgb_with_val(
     early_stopping_rounds: int = 50,
     n_jobs: int = -1,
     random_state: int = 42,
-    refit_on_trainval: bool = True,
+    refit_on_train_val: bool = True,
+    eval_metric: str = "rmse",
 ) -> Tuple["XGBRegressor", Dict[str, float], pd.Series]:
     """Train XGBoost regressor with a validation set and early stopping.
 
@@ -193,7 +194,8 @@ def train_xgb_with_val(
         early_stopping_rounds: Stop if no validation RMSE improvement after this many rounds (>=1).
         n_jobs: Threads (-1 uses all cores).
         random_state: Seed.
-        refit_on_trainval: Whether to refit with best_n_estimators on train+val before returning.
+        refit_on_train_val: Whether to refit with best_n_estimators on train+val before returning.
+        eval_metric: Metric to use for early stopping.
 
     Returns:
         Tuple[XGBRegressor, Dict[str, float], pd.Series]:
@@ -227,6 +229,9 @@ def train_xgb_with_val(
     X_train, y_train = align_X_y(X_train, y_train, dropna=True)
     X_val, y_val = align_X_y(X_val, y_val, dropna=True)
 
+    if X_train.empty or y_train.empty or X_val.empty or y_val.empty:
+        raise ValueError("Empty training or validation data after alignment/dropna.")
+    
     # Require identical feature columns and order (avoid silent train/val mismatch)
     if not X_val.columns.equals(X_train.columns):
         raise ValueError(
@@ -248,17 +253,15 @@ def train_xgb_with_val(
         n_jobs=n_jobs,
         random_state=random_state,
         verbosity=0,
+        eval_metric=eval_metric,
     )
-
+    
     base_model.fit(
         X_train,
         y_train,
         eval_set=[(X_val, y_val)],
-        eval_metric="rmse",
-        verbose=False,
-        early_stopping_rounds=early_stopping_rounds,
-    )
-
+        verbose=False
+    )  
     # If early stopping didn't trigger, best_iteration is None; fall back to n_estimators
     best_n = int(base_model.best_iteration + 1) if getattr(base_model, "best_iteration", None) is not None else int(n_estimators)
     if best_n < 1:
@@ -277,7 +280,7 @@ def train_xgb_with_val(
     val_corr = pearson_corr(y_val, val_pred) # may be NaN if degenerate; allowed in diagnostics
 
     # Optional refit on train+val with best_n
-    if refit_on_trainval:
+    if refit_on_train_val:
         X_train_val = pd.concat([X_train, X_val], axis=0)
         y_train_val = pd.concat([y_train, y_val], axis=0)
         final_model = XGBRegressor(
