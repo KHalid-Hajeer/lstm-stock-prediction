@@ -441,13 +441,33 @@ def yearly_summary(returns: pd.Series) -> pd.DataFrame:
     r = clean_series(returns)
     if r.empty:
         return pd.DataFrame(columns=["CAGR", "Sharpe", "MaxDD"])
+    
+    # Ensure DatetimeINdex
+    if not isinstance(r.index, pd.DatetimeIndex):
+        try: 
+            r.index = pd.DatetimeIndex(r.index, errors="raise")
+        except:
+            raise TypeError(
+                "yearly_summary expects a date-indexed return series."
+                f"Got index type={type(r.index).__name__}, dtype={getattr(r.index, 'dtype', None)}."
+            )
+    
+    # Drop timezone to allow .year access consistently
+    if r.index.tz is not None:
+        r.index = r.index.tz_localize(None)
+
     rows = []
     for year, r_y in r.groupby(r.index.year):
         if r_y.empty:
             continue
         w = wealth_curve(r_y, starting_wealth=1.0)
         mdd, _, _ = max_drawdown(w)
-        rows.append({"Year": int(year), "CAGR": annualized_return(r_y), "Sharpe": sharpe_ratio(r_y), "MaxDD": mdd})
+        rows.append({
+            "Year": int(year), 
+            "CAGR": annualized_return(r_y), 
+            "Sharpe": sharpe_ratio(r_y), 
+            "MaxDD": mdd
+        })
     df = pd.DataFrame(rows)
     return df.set_index("Year") if not df.empty else df
 
