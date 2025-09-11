@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 import numpy as np
 import pandas as pd
+from src.utils import align_X_y
 
 EPSILON: float = 1e-12
 
@@ -100,26 +101,25 @@ def single_asset_backtest(
     scores_series = pd.Series(scores).astype("float64")
     next_day_return = pd.Series(y_raw_next).astype("float64")
 
-    # Ensure both are datetime-indexed, tz-naive, sorted, deduplicated
-    def _to_dt(s: pd.Series, who: str) -> pd.Series:
-        if not isinstance(s.index, pd.DatetimeIndex):
-            try:
-                s.index = pd.to_datetime(s.index, errors="raise")
-            except Exception as e:
-                raise TypeError(f"'{who}' index must be datetime-like or coercible.") from e
-        if s.index.tz is not None:
-            s.index = s.index.tz_localize(None)
-        s = s[~s.index.duplicated(keep="first")].sort_index()
-        return s
+    X = pd.DataFrame({"score": scores_series})
+    y = next_day_return.copy()
+    try:
+        X_aligned, y_aligned = align_X_y(X, y, dropna=False)
+    except ValueError:
+        # Fallback: adopt y's DatetimeIndex if lengths match; else align by position with RangeIndex.
+        if len(X) != len(y):
+            raise 
+        if isinstance(y.index, pd.DatetimeIndex):
+            X.index = y.index
+        else:
+            # If neither side is datetime, align by position without inventing dates
+            rng = pd.RangeIndex(len(y))
+            X.index = rng
+            y.index = rng
+        X_aligned, y_aligned = align_X_y(X, y, dropna=False)
     
-    scores_series = _to_dt(scores_series, "scores")
-    next_day_return = _to_dt(next_day_return, "y_raw_next")
-
-    common_index = scores_series.index.intersection(next_day_return.index)
-    if len(common_index) == 0:
-        raise ValueError("No overlapping index between 'scores' and 'y_raw_next'.")
-    scores_series = scores_series.loc[common_index]
-    next_day_return = next_day_return.loc[common_index]
+    scores_series = X_aligned["score"]
+    next_day_return = y_aligned
 
     # 1) Time-series z-score of model scores (no lookahead)
     z_score = _rolling_zscore(scores_series, z_window)
@@ -169,5 +169,5 @@ def single_asset_backtest(
         cols_to_check = ["z_score", "weight"]
         backtest_frame = backtest_frame.dropna(subset=cols_to_check)
 
-    backtest_frame.index.name = "date"
+    backtest_frame.index.name = "date" if isinstance(backtest_frame.index, pd.DatetimeIndex) else "idx"
     return backtest_frame
