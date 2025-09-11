@@ -444,14 +444,15 @@ def yearly_summary(returns: pd.Series) -> pd.DataFrame:
     
     # Ensure DatetimeINdex
     if not isinstance(r.index, pd.DatetimeIndex):
-        try: 
-            r.index = pd.DatetimeIndex(r.index, errors="raise")
-        except:
-            raise TypeError(
-                "yearly_summary expects a date-indexed return series."
-                f"Got index type={type(r.index).__name__}, dtype={getattr(r.index, 'dtype', None)}."
-            )
-    
+        inferred = getattr(r.index, "inferred_type", "")
+        if getattr(r.index, "dtype", None) == object or inferred in {"string", "mixed"}:
+            try: 
+                r.index = pd.to_datetime(r.index, errors="raise")
+            except Exception as e:
+                raise TypeError("yearly_summary expects a date-indexed series or string dates.") from e
+        else:
+            raise TypeError("yearly_summary requires a DatetimeIndex (got numeric/positional index).")
+
     # Drop timezone to allow .year access consistently
     if r.index.tz is not None:
         r.index = r.index.tz_localize(None)
