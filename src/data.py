@@ -134,8 +134,8 @@ def get_stock_data(
     
     # Initialize the Alpaca client
     client = _client()
-    end = dt.datetime.now(dt.timezone.utc)  # Current time in UTC
-    start = end - relativedelta.relativedelta(years=years)  # Calculate start time for the data request
+    end = dt.datetime.now(dt.timezone.utc)
+    start = end - relativedelta.relativedelta(years=years)
 
     # Define the parameters for the data request
     request_params = StockBarsRequest(
@@ -147,23 +147,17 @@ def get_stock_data(
         limit=10000
     )
 
-    # Fetch the stock data from Alpaca with auto fallback
+    # Fetch the stock data from Alpaca with auto fallback.
+    # A single API call is correct; the SDK handles fetching the full date range.
     try:
         bars = client.get_stock_bars(request_params)
     except Exception as e:
         if "subscription" in str(e).lower() and "sip" in str(e).lower():
-            req = StockBarsRequest(
-                symbol_or_symbols=symbol,
-                timeframe=TimeFrame.Day,
-                start=start,
-                end=end,
-                feed=_resolve_feed("iex"),
-                limit=10000,
-            )
-            bars = client.get_stock_bars(req)
+            print("SIP feed failed, falling back to IEX.")
+            request_params.feed = _resolve_feed("iex")
+            bars = client.get_stock_bars(request_params)
         else:
             raise
-
 
     # Clean the DataFrame
     df = _flatten_bars_df(bars.df)
